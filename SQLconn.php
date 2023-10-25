@@ -58,8 +58,18 @@ class PDOConnect
 
             $stmt->execute();        
             return $stmt->rowCount();
-        } catch(PDOException $e) {
-            echo "Error SQL Insert: " . $e->getMessage();
+        } catch (PDOException $e) {
+            $errorCode = $e->getCode();
+
+            // SQL Server deadlock error code
+            if ($errorCode == '40001') {
+                // Deadlock occurred, wait and retry
+                $retryCount++;
+                usleep(1000000); // Wait for 1 second (you can adjust this)
+            } else {
+                // Other SQL error, re-throw the exception
+                throw $e;
+            }
         }
     }
     
