@@ -1,5 +1,5 @@
 <?php
-set_time_limit(900);
+set_time_limit(3600);
 $startTime = microtime(true);
 $txt = file_get_contents('http://localhost/proxy.txt');
 $items = explode(';', $txt);
@@ -20,23 +20,21 @@ $CloseParcel = 0;
 $RowInsert=0;
 try 
 {   
-    require 'SQLconn.php';
+
     //connection setting
-    $Connection = PDOConnect::getInstance("DPD_DB"); // zavolání funkce a předání hodnot jako argumenty
+    if (!isset($Connection)){$Connection = new PDOConnect("DPD_DB");} // zavolání funkce a předání hodnot jako argumenty
     $client = new SoapClient("./soap.wsdl",$parameters); // initialize the client
     $pw = base64_decode(file_get_contents('http://localhost/packeta.txt'));
 
     //select packeta parcelnumbers 
     $SQL=  "SELECT [PARCELNO] FROM [DPD_DB].[dbo].[PD2] where len(PARCELNO) = 10 and [Update] IS null order by EVENT_DATE_TIME desc";
     $stmt = $Connection->select($SQL);
-
+    $rows = $stmt['rows']; 
     //checking new status 
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) 
-    {   foreach ($row as $key => $value)
+    foreach ($rows as $key => $value)
         {
-
-            $packetId = "Z".$value;
-            $parcelNum =$value;        
+            $packetId = "Z".$value["PARCELNO"];
+            $parcelNum =$value["PARCELNO"];        
             $RowHunt++;
             try         
             {     
@@ -58,7 +56,7 @@ try
                         $SQL=  "SELECT count([PARCELNO]) as Counter FROM [DPD_DB].[dbo].[PMIdb] where ([PARCELNO] = :parcelno) and ([EVENT_DATE_TIME] = :DaTi)";
                         $params = array(':parcelno' => $parcelNum,  ':DaTi' => $DateTime );
                         $CounterResult = $Connection->select($SQL,$params );
-                        $Counter= $CounterResult->fetchColumn();
+                        $Counter= $CounterResult["rows"][0]["Counter"];
                     
                     //checking every parcelnum row in Db => $Counter == 0 then insert new row
                         if ($Counter == 0)
@@ -70,10 +68,10 @@ try
                                 $SQL=  "SELECT [ZIP] FROM [DPD_DB].[dbo].[PCKBranch] where ([ID] = :ID)";
                                 $params = array(':ID' => $Branch);
                                 $zipResult = $Connection->select($SQL,$params);
-                                $ZIP =trim($zipResult->fetchColumn());   
+                                $ZIP =trim($zipResult["rows"][0]["ZIP"]);   
                             }
                             //insert rows to DB
-                            $data = array('PARCELNO' => $value, 'SCAN_CODE' => $ScanCode, 'EVENT_DATE_TIME' => $DateTime, 'ZIP' => $ZIP,'Source' => "Packeta", 'KN' => 'Import', 'Customer' => $Branch);
+                            $data = array('PARCELNO' => $parcelNum, 'SCAN_CODE' => $ScanCode, 'EVENT_DATE_TIME' => $DateTime, 'ZIP' => $ZIP,'Source' => "Packeta", 'KN' => 'Import', 'Customer' => $Branch);
                             $Connection->insert('PMIdb', $data);
                             $RowInsert++;
                             
@@ -84,10 +82,8 @@ try
                                 $params = array(':PARCELNO' => $parcelNum);  
                                 $upd = $Connection->update($SQL,$params);
                                 $CloseParcel++;
-                            }
-        
-                        }
-                        
+                            }        
+                        }                        
                     }
                 }
                 // one item array
@@ -101,7 +97,7 @@ try
                     $SQL=  "SELECT count([PARCELNO]) as Counter FROM [DPD_DB].[dbo].[PMIdb] where ([PARCELNO] = :parcelno) and ([EVENT_DATE_TIME] = :DaTi)";
                     $params = array(':parcelno' => $parcelNum,  ':DaTi' => $DateTime );
                     $CounterResult = $Connection->select($SQL,$params );
-                    $Counter= $CounterResult->fetchColumn();
+                    $Counter= $CounterResult["count"];
                     
                     //checking every parcelnum row in Db => $Counter == 0 then insert new row
                     if ($Counter == 0)
@@ -112,11 +108,11 @@ try
                             $SQL=  "SELECT [ZIP] FROM [DPD_DB].[dbo].[PCKBranch] where ([ID] = :ID)";
                             $params = array(':ID' => $Branch);
                             $zipResult = $Connection->select($SQL,$params);
-                            $ZIP =trim($zipResult->fetchColumn());  
+                            $ZIP =trim($zipResult["rows"][0]["ZIP"]);  
                             $RowInsert++;
                         }
                         //insert rows to DB
-                        $data = array('PARCELNO' => $value, 'SCAN_CODE' => $ScanCode, 'EVENT_DATE_TIME' => $DateTime, 'ZIP' => $ZIP,'Source' => "Packeta", 'KN' => 'Import', 'Customer' => $Branch);
+                        $data = array('PARCELNO' => $parcelNum, 'SCAN_CODE' => $ScanCode, 'EVENT_DATE_TIME' => $DateTime, 'ZIP' => $ZIP,'Source' => "Packeta", 'KN' => 'Import', 'Customer' => $Branch);
                         $Connection->insert('PMIdb', $data);
                         
                         //Set field Update to 1 => next round dont check this palletnum
@@ -136,7 +132,7 @@ try
             }
         }
 
-    }
+    
 }
 catch (PDOException $exception) 
 {
